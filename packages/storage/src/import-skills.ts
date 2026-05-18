@@ -27,29 +27,148 @@ function pickDir(workspacePath: string, ...segments: string[]): string {
   return path.join(workspacePath, '.opencode', ...segments)
 }
 
-// Category detection from skill name
+// Single source of truth for skill → category. 16 canonical categories:
+// Frontend, Mobile, Backend, Data, DevOps, Testing, Marketing, SEO, CMS,
+// Process, Lifecycle, Agents, Commands, Legal, Media, System.
+// agent:* and command:* are auto-resolved by prefix in detectCategory().
 const CATEGORY_MAP: Record<string, string> = {
-  nextjs: 'Frontend', tailwind: 'Frontend', shadcn: 'Frontend', fonts: 'Frontend',
-  animations: 'Frontend', 'motion-system': 'Frontend', state: 'Frontend',
-  'mobile-first': 'Frontend', i18n: 'Frontend',
-  trpc: 'Backend', auth: 'Backend', forms: 'Backend', database: 'Backend',
-  email: 'Backend', payments: 'Backend', 'odoo-crm-lead': 'Backend',
-  realtime: 'Realtime', 'background-jobs': 'Realtime', n8n: 'Automation',
-  payload: 'CMS', cms: 'CMS', mongodb: 'CMS',
-  'ci-cd': 'Infrastructure', coolify: 'Infrastructure', docker: 'Infrastructure',
-  'monitoring-nextjs': 'Monitoring', 'security-headers': 'Security',
-  analytics: 'Monitoring', performance: 'Performance', pwa: 'Performance',
-  'file-handling': 'Files', media: 'Files', ffmpeg: 'Files', remotion: 'Video',
-  seo: 'SEO', 'seo-for-devs': 'SEO', 'seo-audit': 'SEO',
-  'landing-architecture': 'Marketing', copywriting: 'Marketing',
-  'cro-patterns': 'Marketing', gdpr: 'Legal', iubenda: 'Legal',
-  'legal-templates': 'Legal',
+  // Frontend (web UI + 3D)
+  'angular-architect': 'Frontend', animations: 'Frontend', astro: 'Frontend',
+  'claude-design': 'Frontend', 'css-3d-transforms': 'Frontend', figma: 'Frontend',
+  fonts: 'Frontend', 'framer-motion-advanced': 'Frontend', 'frontend-design': 'Frontend',
+  'glsl-shaders': 'Frontend', 'gltf-asset-pipeline': 'Frontend', i18n: 'Frontend',
+  'mobile-first': 'Frontend', 'motion-system': 'Frontend', 'next-best-practices': 'Frontend',
+  nextjs: 'Frontend', 'nextjs-developer': 'Frontend', nuxt: 'Frontend', pwa: 'Frontend',
+  'r3f-physics': 'Frontend', 'r3f-postprocessing': 'Frontend', 'react-expert': 'Frontend',
+  'react-three-fiber': 'Frontend', 'scroll-3d-animations': 'Frontend', shadcn: 'Frontend',
+  'spline-rive-web': 'Frontend', state: 'Frontend', stitch: 'Frontend',
+  sveltekit: 'Frontend', tailwind: 'Frontend', 'threejs-fundamentals': 'Frontend',
+  'ui-ux-pro-max': 'Frontend', 'vercel-react-best-practices': 'Frontend',
+  'vue-expert': 'Frontend', 'vue-expert-js': 'Frontend', 'web-design-guidelines': 'Frontend',
+  'webgpu-tsl': 'Frontend', 'webxr-spatial': 'Frontend',
+
+  // Mobile
+  'Expo UI Jetpack Compose': 'Mobile', 'Expo UI SwiftUI': 'Mobile',
+  'building-native-ui': 'Mobile', 'expo-api-routes': 'Mobile',
+  'expo-cicd-workflows': 'Mobile', 'expo-deployment': 'Mobile',
+  'expo-dev-client': 'Mobile', 'expo-module': 'Mobile',
+  'expo-tailwind-setup': 'Mobile', 'flutter-expert': 'Mobile',
+  'kotlin-specialist': 'Mobile', 'native-data-fetching': 'Mobile',
+  'react-native-best-practices': 'Mobile', 'react-native-brownfield-migration': 'Mobile',
+  'react-native-expert': 'Mobile', 'swift-expert': 'Mobile',
+  'upgrading-expo': 'Mobile', 'upgrading-react-native': 'Mobile', 'use-dom': 'Mobile',
+
+  // Backend
+  'ai-image-generation': 'Backend', 'ai-sdk': 'Backend', 'api-designer': 'Backend',
+  'architecture-designer': 'Backend', auth: 'Backend', 'background-jobs': 'Backend',
+  'claude-api-patterns': 'Backend', 'cli-developer': 'Backend', 'cpp-pro': 'Backend',
+  'csharp-developer': 'Backend', 'django-expert': 'Backend', 'dotnet-core-expert': 'Backend',
+  email: 'Backend', 'embedded-systems': 'Backend', 'fastapi-expert': 'Backend',
+  'fine-tuning-expert': 'Backend', forms: 'Backend', 'fullstack-guardian': 'Backend',
+  'game-developer': 'Backend', 'golang-pro': 'Backend', 'graphql-architect': 'Backend',
+  'java-architect': 'Backend', 'javascript-pro': 'Backend', 'laravel-specialist': 'Backend',
+  'legacy-modernizer': 'Backend', 'mcp-developer': 'Backend',
+  'microservices-architect': 'Backend', 'nestjs-expert': 'Backend',
+  'nodemailer-transactional': 'Backend', payments: 'Backend', 'php-pro': 'Backend',
+  'prompt-engineer': 'Backend', 'python-pro': 'Backend', 'rails-expert': 'Backend',
+  realtime: 'Backend', 'resend-react-email': 'Backend',
+  'rhf-zod-server-actions': 'Backend', 'rust-engineer': 'Backend',
+  'secure-code-guardian': 'Backend', 'security-headers': 'Backend',
+  'security-reviewer': 'Backend', 'spark-engineer': 'Backend',
+  'spec-miner': 'Backend', 'spring-boot-engineer': 'Backend',
+  'stripe-subscriptions-webhooks': 'Backend', 'supabase-auth-ssr': 'Backend',
+  'tanstack-query-next-actions': 'Backend', trpc: 'Backend',
+  'typescript-pro': 'Backend', 'vercel-ai-sdk-streaming': 'Backend',
+  'websocket-engineer': 'Backend',
+
+  // Data
+  database: 'Data', 'database-optimizer': 'Data', 'ml-pipeline': 'Data',
+  mongodb: 'Data', 'odoo-api-query': 'Data', 'odoo-crm-lead': 'Data',
+  'pandas-pro': 'Data', 'postgres-pro': 'Data', 'rag-architect': 'Data',
+  'redis-development': 'Data', 'sql-pro': 'Data',
+
+  // DevOps
+  'audit-website': 'DevOps', 'chaos-engineer': 'DevOps', 'ci-cd': 'DevOps',
+  'cloud-architect': 'DevOps', coolify: 'DevOps', 'devops-engineer': 'DevOps',
+  docker: 'DevOps', github: 'DevOps', 'github-actions': 'DevOps',
+  'kubernetes-specialist': 'DevOps', 'monitoring-expert': 'DevOps',
+  'monitoring-nextjs': 'DevOps', n8n: 'DevOps', performance: 'DevOps',
+  'project-automation': 'DevOps', 'project-health-check': 'DevOps',
+  'quality-gates': 'DevOps', 'sentry-nextjs': 'DevOps', 'sre-engineer': 'DevOps',
+  'terraform-engineer': 'DevOps', 'turborepo-monorepo': 'DevOps',
+
+  // Testing
+  'playwright-expert': 'Testing', 'skill-eval': 'Testing',
+  'test-driven-development': 'Testing', 'test-master': 'Testing',
+  testing: 'Testing', 'vitest-next-conventions': 'Testing',
+
+  // Marketing
+  'ab-testing': 'Marketing', 'ad-creative': 'Marketing', analytics: 'Marketing',
+  'analytics-tracking': 'Marketing', 'churn-prevention': 'Marketing',
+  'cold-email': 'Marketing', 'competitor-alternatives': 'Marketing',
+  'content-strategy': 'Marketing', 'copy-editing': 'Marketing',
+  copywriting: 'Marketing', 'cro-patterns': 'Marketing',
+  'email-sequence': 'Marketing', 'form-cro': 'Marketing',
+  'free-tool-strategy': 'Marketing', 'landing-architecture': 'Marketing',
+  'launch-strategy': 'Marketing', 'marketing-ideas': 'Marketing',
+  'marketing-psychology': 'Marketing', 'onboarding-cro': 'Marketing',
+  'paid-ads': 'Marketing', 'paywall-upgrade-cro': 'Marketing',
+  'popup-cro': 'Marketing', 'pricing-strategy': 'Marketing',
+  'product-marketing-context': 'Marketing', 'referral-program': 'Marketing',
+  revops: 'Marketing', 'sales-enablement': 'Marketing',
+  'signup-flow-cro': 'Marketing', 'social-content': 'Marketing',
+
+  // SEO
+  'ai-seo': 'SEO', 'programmatic-seo': 'SEO', 'schema-markup': 'SEO',
+  seo: 'SEO', 'seo-audit': 'SEO', 'seo-competitor-pages': 'SEO',
+  'seo-content': 'SEO', 'seo-for-devs': 'SEO', 'seo-geo': 'SEO',
+  'seo-hreflang': 'SEO', 'seo-images': 'SEO', 'seo-page': 'SEO',
+  'seo-plan': 'SEO', 'seo-programmatic': 'SEO', 'seo-schema': 'SEO',
+  'seo-sitemap-advanced': 'SEO', 'seo-technical': 'SEO',
+  'site-architecture': 'SEO', sitemap: 'SEO',
+
+  // CMS & content pipelines
+  'agent-browser': 'CMS', cms: 'CMS', payload: 'CMS',
+  'salesforce-developer': 'CMS', scraping: 'CMS', 'shopify-expert': 'CMS',
+  'website-cloning': 'CMS', 'wordpress-pro': 'CMS',
+
+  // Process (workflows, code review, meta-skills)
+  'atlassian-mcp': 'Process', brainstorming: 'Process',
+  'code-documenter': 'Process', 'code-reviewer': 'Process',
+  'debugging-wizard': 'Process', 'dispatching-parallel-agents': 'Process',
+  'executing-plans': 'Process', 'feature-forge': 'Process',
+  'finishing-a-development-branch': 'Process',
+  'receiving-code-review': 'Process', 'requesting-code-review': 'Process',
+  'skill-creator': 'Process', 'skill-syncer': 'Process',
+  'skill-template-2.0': 'Process', 'subagent-driven-development': 'Process',
+  'systematic-debugging': 'Process', 'the-fool': 'Process',
+  'using-git-worktrees': 'Process', 'validate-skills': 'Process',
+  'verification-before-completion': 'Process', 'writing-plans': 'Process',
+  'writing-skills': 'Process',
+
+  // Lifecycle (session/memory bootstraps)
+  'capture-learning': 'Lifecycle', 'codegraph-context': 'Lifecycle',
+  'load-learnings': 'Lifecycle', 'post-session-review': 'Lifecycle',
+  'using-superpowers': 'Lifecycle',
+
+  // Legal
+  gdpr: 'Legal', iubenda: 'Legal', 'legal-templates': 'Legal',
+
+  // Media (files, video, audio, AI gen)
+  'ai-video-generation': 'Media', ffmpeg: 'Media', 'file-handling': 'Media',
+  media: 'Media', remotion: 'Media', 'tts-voiceover': 'Media',
+  'video-producer': 'Media',
+
+  // System (meta/registry)
+  AGENTS: 'System', CLAUDE: 'System', 'SKILLS-MAP': 'System',
+  '_routing-index': 'System', 'pending-review': 'System',
 }
 
-function detectCategory(name: string): string {
+export function detectCategory(name: string): string {
+  if (name.startsWith('agent:')) return 'Agents'
+  if (name.startsWith('command:')) return 'Commands'
   if (CATEGORY_MAP[name]) return CATEGORY_MAP[name]
   if (name.startsWith('seo-')) return 'SEO'
-  if (name.startsWith('pixarts')) return 'Pixarts'
   if (name.includes('cro') || name.includes('marketing') || name.includes('strategy')) return 'Marketing'
   return 'Other'
 }
@@ -124,14 +243,18 @@ export function importSkills(workspacePath: string): { skills: number; agents: n
   })
 
   // Import lifecycle/process skills from .agents/skills/
+  // Category is resolved by detectCategory(name) so language/tech skills
+  // (typescript-pro, vue-expert, etc.) don't get bucketed under "Process"
+  // just because they live in this directory.
   const agentsSkillDir = path.join(workspacePath, '.agents', 'skills')
   walkDir(agentsSkillDir, (filePath, name) => {
     const content = fs.readFileSync(filePath, 'utf-8')
     const fm = parseFrontmatter(content)
     const type: SkillType = isLifecycleSkill(name) ? 'lifecycle' : 'process'
+    const resolvedName = (fm.name as string) || name
     skills.push({
-      name: fm.name || name,
-      category: type === 'lifecycle' ? 'Lifecycle' : 'Process',
+      name: resolvedName,
+      category: detectCategory(resolvedName),
       description: fm.description || `${type} skill: ${name}`,
       content,
       type,
