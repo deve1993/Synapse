@@ -22,25 +22,82 @@ export function createSkillsRouter(ctx: RouteContext): Router {
     try {
       const db = openDb(ctx.skillbrainRoot)
       const store = new SkillsStore(db)
+      const project = (s: { name: string; category: string; type: string; description: string; lines: number; tags: string[]; updatedAt?: string; confidence?: number; usageCount?: number; usefulCount?: number; status?: string }) => ({
+        name: s.name, category: s.category, type: s.type,
+        description: s.description.slice(0, 150), lines: s.lines,
+        tags: s.tags,
+        updatedAt: s.updatedAt,
+        confidence: s.confidence ?? null,
+        usageCount: s.usageCount ?? 0,
+        usefulCount: s.usefulCount ?? 0,
+        status: s.status ?? 'active',
+      })
       let skills
       if (search) {
-        skills = store.search(search, parseInt(limit || '50', 10)).map((r) => ({
-          name: r.skill.name, category: r.skill.category, type: r.skill.type,
-          description: r.skill.description.slice(0, 150), lines: r.skill.lines,
-          tags: r.skill.tags,
-        }))
+        skills = store.search(search, parseInt(limit || '50', 10)).map((r) => project(r.skill))
       } else {
-        skills = store.list(type, category).map((s) => ({
-          name: s.name, category: s.category, type: s.type,
-          description: s.description.slice(0, 150), lines: s.lines,
-          tags: s.tags,
-        }))
+        skills = store.list(type, category).map(project)
       }
       const stats = store.stats()
       closeDb(db)
       res.json({ skills, total: stats.total, stats })
     } catch {
       res.json({ skills: [], total: 0, stats: {} })
+    }
+  })
+
+  // PUT /api/skills/:name — admin update of metadata + content.
+  // Soft-validates via skill_versions (history kept). Returns the updated skill.
+  router.put('/api/skills/:name', ctx.requireAdmin, json({ limit: '256kb' }), (req, res) => {
+    const userId = (req as any).userId ?? 'unknown'
+    const { description, category, content, tags } = (req.body || {}) as {
+      description?: string; category?: string; content?: string; tags?: string[]
+    }
+    try {
+      const db = openDb(ctx.skillbrainRoot)
+      const store = new SkillsStore(db)
+      const existing = store.get(String(req.params.name))
+      if (!existing) { closeDb(db); res.status(404).json({ error: 'Skill not found' }); return }
+      const updated = {
+        ...existing,
+        description: description ?? existing.description,
+        category: category ?? existing.category,
+        content: content ?? existing.content,
+        tags: tags ?? existing.tags,
+        lines: (content ?? existing.content).split('\n').length,
+        updatedAt: new Date().toISOString(),
+      }
+      store.upsert(updated, { changedBy: userId, reason: 'dashboard edit' })
+      new AuditStore(db).log({
+        entityType: 'skill', entityId: existing.name, action: 'update',
+        reviewedBy: userId, metadata: { fields: Object.keys(req.body || {}) },
+      })
+      closeDb(db)
+      res.json({ skill: updated })
+    } catch (err: any) {
+      res.status(400).json({ error: err.message })
+    }
+  })
+
+  // DELETE = soft-delete (status='deprecated'). Versioning is preserved.
+  router.delete('/api/skills/:name', ctx.requireAdmin, (req, res) => {
+    const userId = (req as any).userId ?? 'unknown'
+    try {
+      const db = openDb(ctx.skillbrainRoot)
+      const store = new SkillsStore(db)
+      const existing = store.get(String(req.params.name))
+      if (!existing) { closeDb(db); res.status(404).json({ error: 'Skill not found' }); return }
+      store.upsert(
+        { ...existing, status: 'deprecated', updatedAt: new Date().toISOString() },
+        { changedBy: userId, reason: 'soft-delete via dashboard' },
+      )
+      new AuditStore(db).log({
+        entityType: 'skill', entityId: existing.name, action: 'delete', reviewedBy: userId, metadata: { type: 'soft-delete' },
+      })
+      closeDb(db)
+      res.json({ ok: true })
+    } catch (err: any) {
+      res.status(400).json({ error: err.message })
     }
   })
 

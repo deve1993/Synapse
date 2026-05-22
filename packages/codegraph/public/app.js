@@ -12,6 +12,7 @@ import {
 } from './js/modal.js'
 import {
   renderHome, renderSkills, renderSkillsHealth, searchSkills, openSkillDetail,
+  openSkillEditModal, saveSkillEdit, deleteSkill,
   renderMemories, searchMemories, openMemoryDetail,
   renderSessions, renderProjects, renderProjectDetail,
   renderProjectTab, applyProjectFilters, loadEnvVars, searchGlobal, renderWorkLog,
@@ -296,6 +297,9 @@ function addMemberRow() {
 // ── Expose globals needed by inline onclick handlers ──
 window.renderSkills = renderSkills
 window.renderSkillsHealth = renderSkillsHealth
+window.openSkillEditModal = openSkillEditModal
+window.saveSkillEdit = saveSkillEdit
+window.deleteSkill = deleteSkill
 window.renderMemories = renderMemories
 window.openSkillDetail = (name) => openSkillDetail(name, openDetail)
 window.openMemoryDetail = (id) => openMemoryDetail(id, openDetail)

@@ -27,6 +27,14 @@ export interface Skill {
   status?: 'active' | 'pending' | 'deprecated'
   createdByUserId?: string
   updatedByUserId?: string
+  // Autolearning metrics — present once migration 016 is applied.
+  // Surfaced to /api/skills so the Catalog cards can render confidence bars
+  // and usage/useful badges without an extra round-trip.
+  confidence?: number
+  usageCount?: number
+  usefulCount?: number
+  sessionsSinceValidation?: number
+  lastValidated?: string
 }
 
 export interface SkillVersion {
@@ -103,9 +111,12 @@ export class SkillsStore {
       `),
       get: this.db.prepare('SELECT * FROM skills WHERE name = ?'),
       getUpdatedAt: this.db.prepare('SELECT updated_at FROM skills WHERE name = ?'),
-      listAll: this.db.prepare("SELECT name, category, description, type, tags, lines, status, updated_at, created_by_user_id FROM skills WHERE status = 'active' ORDER BY category, name"),
-      listByType: this.db.prepare("SELECT name, category, description, type, tags, lines, status, updated_at, created_by_user_id FROM skills WHERE type = ? AND status = 'active' ORDER BY category, name"),
-      listByCategory: this.db.prepare("SELECT name, category, description, type, tags, lines, status, updated_at, created_by_user_id FROM skills WHERE category = ? AND status = 'active' ORDER BY name"),
+      // Include autolearning metrics in list queries so the dashboard Catalog
+      // can render confidence/usage badges without a separate fetch per card.
+      // Columns from migration 016 are nullable and default to safe values.
+      listAll: this.db.prepare("SELECT name, category, description, type, tags, lines, status, updated_at, created_by_user_id, confidence, usage_count, useful_count, sessions_since_validation, last_validated FROM skills WHERE status = 'active' ORDER BY category, name"),
+      listByType: this.db.prepare("SELECT name, category, description, type, tags, lines, status, updated_at, created_by_user_id, confidence, usage_count, useful_count, sessions_since_validation, last_validated FROM skills WHERE type = ? AND status = 'active' ORDER BY category, name"),
+      listByCategory: this.db.prepare("SELECT name, category, description, type, tags, lines, status, updated_at, created_by_user_id, confidence, usage_count, useful_count, sessions_since_validation, last_validated FROM skills WHERE category = ? AND status = 'active' ORDER BY name"),
       searchFts: this.db.prepare(`
         SELECT s.*, fts.rank
         FROM skills_fts fts
@@ -147,7 +158,11 @@ export class SkillsStore {
         WHERE action = 'applied' AND ts >= datetime('now', ?)
         GROUP BY skill_name ORDER BY count DESC LIMIT ?
       `),
-      // Skills that were routed many times in the window but never loaded — likely noise
+      // Skills that look dead: never loaded AND never applied in the window.
+      // Both signals count as "alive": `loaded` = read interactively in a session,
+      // `applied` = referenced by a memory_add hook (real usage).
+      // Without the applied check, the backfill of historical memories would flag
+      // every applied-only skill as dead — false positive.
       deadSkills: this.db.prepare(`
         SELECT s.name as skillName, COUNT(u.id) as count
         FROM skills s
@@ -155,6 +170,7 @@ export class SkillsStore {
         WHERE s.status = 'active'
         GROUP BY s.name
         HAVING SUM(CASE WHEN u.action = 'loaded' THEN 1 ELSE 0 END) = 0
+           AND SUM(CASE WHEN u.action = 'applied' THEN 1 ELSE 0 END) = 0
         ORDER BY count DESC LIMIT ?
       `),
       lastUsed: this.db.prepare(`
@@ -572,17 +588,21 @@ export class SkillsStore {
   }
 
   gcDeadSkills(opts: { threshold: number; days: number; dryRun: boolean }): { deprecated: string[]; scanned: number } {
+    // Same fix as the deadSkills query: applied counts as life, otherwise
+    // we'd auto-deprecate skills that are referenced by memories but not
+    // currently opened in sessions.
     const sql = `
       SELECT s.name,
         SUM(CASE WHEN u.action = 'routed' THEN 1 ELSE 0 END) AS routed_count,
-        SUM(CASE WHEN u.action = 'loaded' THEN 1 ELSE 0 END) AS loaded_count
+        SUM(CASE WHEN u.action = 'loaded' THEN 1 ELSE 0 END) AS loaded_count,
+        SUM(CASE WHEN u.action = 'applied' THEN 1 ELSE 0 END) AS applied_count
       FROM skills s
       LEFT JOIN skill_usage u
         ON u.skill_name = s.name
         AND u.ts >= datetime('now', ?)
       WHERE s.status = 'active'
       GROUP BY s.name
-      HAVING routed_count >= ? AND loaded_count = 0
+      HAVING routed_count >= ? AND loaded_count = 0 AND applied_count = 0
     `
     const rows = this.db.prepare(sql).all(`-${opts.days} days`, opts.threshold) as any[]
     const dead = rows.map((r) => r.name as string)
@@ -773,6 +793,11 @@ export class SkillsStore {
       status: row.status ?? 'active',
       createdByUserId: row.created_by_user_id ?? undefined,
       updatedByUserId: row.updated_by_user_id ?? undefined,
+      confidence: row.confidence ?? undefined,
+      usageCount: row.usage_count ?? undefined,
+      usefulCount: row.useful_count ?? undefined,
+      sessionsSinceValidation: row.sessions_since_validation ?? undefined,
+      lastValidated: row.last_validated ?? undefined,
     }
   }
 

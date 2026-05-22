@@ -380,6 +380,26 @@ function skillsViewToggle(active) {
   `
 }
 
+// Visual confidence bar (1-10), colored by health.
+function confidenceBar(conf) {
+  if (conf == null) return ''
+  const c = Math.max(1, Math.min(10, conf))
+  const color = c >= 7 ? '#22c55e' : c >= 4 ? '#eab308' : '#ef4444'
+  return `
+    <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-dim)">
+      <div style="width:60px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
+        <div style="width:${c * 10}%;height:100%;background:${color}"></div>
+      </div>
+      <span style="font-variant-numeric:tabular-nums">${c}/10</span>
+    </div>
+  `
+}
+
+function usageBadge(s) {
+  if (!s.usageCount) return ''
+  return `<span style="font-size:10px;color:var(--text-dim);padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.04)">↻ ${s.usageCount} · ✓ ${s.usefulCount || 0}</span>`
+}
+
 export async function renderSkills(typeFilter) {
   const url = typeFilter ? `/api/skills?type=${typeFilter}` : `/api/skills`
   const data = await api.get(url)
@@ -387,8 +407,34 @@ export async function renderSkills(typeFilter) {
 
   const types = ['domain', 'agent', 'command', 'lifecycle', 'process']
 
+  // Group skills by category, sorted by count desc for visual hierarchy.
+  const byCategory = new Map()
+  for (const s of window.skillsCache) {
+    if (!byCategory.has(s.category)) byCategory.set(s.category, [])
+    byCategory.get(s.category).push(s)
+  }
+  const categories = [...byCategory.entries()].sort((a, b) => b[1].length - a[1].length)
+
+  const cardHtml = (s) => `
+    <div class="skill-card" style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border-subtle)'" onclick="openSkillDetail('${escHtml(s.name)}')">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px">
+        <div style="display:flex;flex-direction:column;gap:2px;flex:1;min-width:0">
+          <span style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(s.name)}</span>
+          <span style="font-size:10px;color:var(--text-dim)">${badge(s.type)} · ${s.lines}L</span>
+        </div>
+        ${usageBadge(s)}
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);line-height:1.35;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${escHtml(s.description)}</div>
+      ${confidenceBar(s.confidence)}
+      <div style="display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:auto">
+        <button class="btn-sm" onclick="event.stopPropagation();openSkillEditModal('${escHtml(s.name)}')" style="font-size:10px;padding:2px 8px">Edit</button>
+        <button class="btn-sm" onclick="event.stopPropagation();viewSkillHistory('${escHtml(s.name)}')" style="font-size:10px;padding:2px 8px">History</button>
+      </div>
+    </div>
+  `
+
   document.getElementById('page').innerHTML = `
-    <div class="section-title">Skills Browser <span class="count" style="font-size:12px;font-weight:400;color:var(--text-muted)">${data.total} total</span></div>
+    <div class="section-title">Skills Catalog <span class="count" style="font-size:12px;font-weight:400;color:var(--text-muted)">${data.total} total</span></div>
 
     ${skillsViewToggle('catalog')}
 
@@ -397,23 +443,80 @@ export async function renderSkills(typeFilter) {
       ${types.map(t => `<button class="filter-btn ${typeFilter === t ? 'active' : ''}" onclick="renderSkills('${t}')">${t}</button>`).join('')}
     </div>
 
-    <div class="item-list">
-      ${window.skillsCache.map(s => `
-        <div class="item">
-          <div class="item-header" onclick="openSkillDetail('${s.name}')" style="cursor:pointer">
-            <span class="item-name">${badge(s.type)} ${s.name}</span>
-            <span class="item-meta">${s.lines} lines &middot; ${s.category}</span>
-          </div>
-          <div class="item-desc" onclick="openSkillDetail('${s.name}')" style="cursor:pointer">${escHtml(s.description)}</div>
-          ${tagsHtml(s.tags)}
-          <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
-            ${s.updatedAt ? `<span style="font-size:10px;color:var(--text-dim)">Updated ${s.updatedAt.slice(0,10)}</span>` : ''}
-            <button class="btn-sm" onclick="event.stopPropagation();viewSkillHistory('${escHtml(s.name)}')" style="font-size:10px;padding:2px 8px">History</button>
-          </div>
-        </div>
-      `).join('')}
+    ${categories.map(([cat, skills]) => `
+      <div style="margin:18px 0 6px;display:flex;align-items:baseline;gap:10px">
+        <h3 style="font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin:0">${escHtml(cat)}</h3>
+        <span style="font-size:11px;color:var(--text-dim)">${skills.length}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">
+        ${skills.map(cardHtml).join('')}
+      </div>
+    `).join('')}
+  `
+}
+
+// Edit modal — admin only. Loads current content, lets edit metadata + content,
+// PUTs to /api/skills/:name. The dashboard already protects admin endpoints
+// upstream so the modal only opens for authenticated admins.
+export async function openSkillEditModal(name) {
+  const skill = await api.get(`/api/skills/${encodeURIComponent(name)}`)
+  if (skill.error) { alert(skill.error); return }
+  const overlay = document.createElement('div')
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px'
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove() }
+  overlay.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border-subtle);border-radius:8px;padding:20px;width:min(720px,100%);max-height:90vh;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="margin:0;font-size:16px">Edit ${escHtml(skill.name)}</h3>
+        <button class="btn-sm" onclick="this.closest('div[style*=fixed]').remove()" style="font-size:11px">✕ Close</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">
+          Category
+          <input id="edit-skill-category" type="text" value="${escHtml(skill.category)}" style="padding:6px 8px;background:var(--bg-input,#0a0a14);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text);font-size:13px">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">
+          Tags (comma-separated)
+          <input id="edit-skill-tags" type="text" value="${escHtml((skill.tags || []).join(', '))}" style="padding:6px 8px;background:var(--bg-input,#0a0a14);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text);font-size:13px">
+        </label>
+      </div>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted)">
+        Description
+        <textarea id="edit-skill-description" rows="3" style="padding:6px 8px;background:var(--bg-input,#0a0a14);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text);font-size:13px;resize:vertical;font-family:inherit">${escHtml(skill.description)}</textarea>
+      </label>
+      <label style="display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--text-muted);flex:1;min-height:0">
+        Content (Markdown)
+        <textarea id="edit-skill-content" style="padding:8px;background:var(--bg-input,#0a0a14);border:1px solid var(--border-subtle);border-radius:4px;color:var(--text);font-size:12px;font-family:'SF Mono',Monaco,monospace;resize:vertical;height:320px">${escHtml(skill.content)}</textarea>
+      </label>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding-top:8px;border-top:1px solid var(--border-subtle)">
+        <button class="btn-sm" onclick="saveSkillEdit('${escHtml(skill.name)}')" style="font-size:12px;padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer">Save</button>
+        <button class="btn-sm" onclick="deleteSkill('${escHtml(skill.name)}')" style="font-size:11px;color:#ef4444;background:transparent;border:1px solid #ef4444;padding:4px 10px;border-radius:4px;cursor:pointer">Deprecate</button>
+      </div>
     </div>
   `
+  document.body.appendChild(overlay)
+}
+
+export async function saveSkillEdit(name) {
+  const body = {
+    category: document.getElementById('edit-skill-category').value.trim(),
+    description: document.getElementById('edit-skill-description').value.trim(),
+    content: document.getElementById('edit-skill-content').value,
+    tags: document.getElementById('edit-skill-tags').value
+      .split(',').map((t) => t.trim()).filter(Boolean),
+  }
+  const result = await api.put(`/api/skills/${encodeURIComponent(name)}`, body)
+  if (result.error) { alert('Save failed: ' + result.error); return }
+  document.querySelector('div[style*=fixed]')?.remove()
+  await renderSkills()
+}
+
+export async function deleteSkill(name) {
+  if (!confirm(`Deprecate skill "${name}"? It will be hidden from suggestions but versioning is preserved.`)) return
+  const result = await api.del(`/api/skills/${encodeURIComponent(name)}`)
+  if (result.error) { alert('Delete failed: ' + result.error); return }
+  document.querySelector('div[style*=fixed]')?.remove()
+  await renderSkills()
 }
 
 // ── Skills Health (autolearning dashboard) ──

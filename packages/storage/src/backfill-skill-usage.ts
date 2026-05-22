@@ -56,10 +56,17 @@ export function backfillSkillUsage(workspacePath: string, opts: { dryRun?: boole
     `)
 
     let memoriesWithSkill = 0
-    let skillUsageInserted = 0
-    let edgesCreated = 0
     const unknown = new Map<string, number>()
     const perSkillApplied = new Map<string, number>()
+
+    // Snapshot DB counts BEFORE the transaction so we can compute the delta
+    // afterwards. Counting via let-variables inside db.transaction(fn) is
+    // unreliable in better-sqlite3 — the closure mutations don't reflect back
+    // to the outer scope consistently.
+    const countUsage = db.prepare("SELECT COUNT(*) AS c FROM skill_usage WHERE action='applied'")
+    const countEdges = db.prepare('SELECT COUNT(*) AS c FROM memory_skill_edges')
+    const beforeUsage = (countUsage.get() as { c: number }).c
+    const beforeEdges = (countEdges.get() as { c: number }).c
 
     const tx = db.transaction(() => {
       for (const m of memories) {
@@ -90,11 +97,9 @@ export function backfillSkillUsage(workspacePath: string, opts: { dryRun?: boole
             const exists = dedupCheck.get(skillName, m.created_at, m.source_session)
             if (!exists) {
               insertUsage.run(skillName, m.source_session, m.project, null, m.created_by_user_id, m.created_at)
-              skillUsageInserted++
               perSkillApplied.set(skillName, (perSkillApplied.get(skillName) ?? 0) + 1)
             }
-            const result = insertEdge.run(`MSE-${randomId()}`, m.id, skillName, m.created_at)
-            if ((result.changes ?? 0) > 0) edgesCreated++
+            insertEdge.run(`MSE-${randomId()}`, m.id, skillName, m.created_at)
           } else {
             perSkillApplied.set(skillName, (perSkillApplied.get(skillName) ?? 0) + 1)
           }
@@ -102,6 +107,11 @@ export function backfillSkillUsage(workspacePath: string, opts: { dryRun?: boole
       }
     })
     tx()
+
+    const afterUsage = (countUsage.get() as { c: number }).c
+    const afterEdges = (countEdges.get() as { c: number }).c
+    const skillUsageInserted = opts.dryRun ? 0 : afterUsage - beforeUsage
+    const edgesCreated = opts.dryRun ? 0 : afterEdges - beforeEdges
 
     // Recompute aggregate counters on skills table — single pass, idempotent.
     // Includes all events (loaded + applied + pre-existing) so it self-heals
