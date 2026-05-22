@@ -44,6 +44,32 @@ export function createSkillsRouter(ctx: RouteContext): Router {
     }
   })
 
+  // Health dashboard — MUST be declared before `/api/skills/:name`,
+  // otherwise Express matches "health" as the :name param and routes to detail.
+  router.get('/api/skills/health', (_req, res) => {
+    try {
+      const db = openDb(ctx.skillbrainRoot)
+      const store = new SkillsStore(db)
+      const health = {
+        confidenceStats: store.confidenceStats(),
+        topCooccurrences: store.topCooccurrences(20),
+        topRouted: store.topRouted(168, 20),
+        topLoaded: store.topLoaded(168, 20),
+        topApplied: store.topApplied(168, 20),
+        deadSkills: store.deadSkills(30, 20),
+        atRiskSkills: store.atRiskSkills(),
+      }
+      closeDb(db)
+      res.json(health)
+    } catch {
+      res.json({
+        confidenceStats: { growing: [], declining: [], usefulRate: [] },
+        topCooccurrences: [], topRouted: [], topLoaded: [],
+        topApplied: [], deadSkills: [], atRiskSkills: [],
+      })
+    }
+  })
+
   router.get('/api/skills/:name', (req, res) => {
     try {
       const db = openDb(ctx.skillbrainRoot)
@@ -86,31 +112,6 @@ export function createSkillsRouter(ctx: RouteContext): Router {
       res.json({ skill })
     } catch (err: any) {
       res.status(400).json({ error: err.message })
-    }
-  })
-
-  // Skill health dashboard
-  router.get('/api/skills/health', (_req, res) => {
-    try {
-      const db = openDb(ctx.skillbrainRoot)
-      const store = new SkillsStore(db)
-      const health = {
-        confidenceStats: store.confidenceStats(),
-        topCooccurrences: store.topCooccurrences(20),
-        topRouted: store.topRouted(168, 20),
-        topLoaded: store.topLoaded(168, 20),
-        topApplied: store.topApplied(168, 20),
-        deadSkills: store.deadSkills(30, 20),
-        atRiskSkills: store.atRiskSkills(),
-      }
-      closeDb(db)
-      res.json(health)
-    } catch {
-      res.json({
-        confidenceStats: { growing: [], declining: [], usefulRate: [] },
-        topCooccurrences: [], topRouted: [], topLoaded: [],
-        topApplied: [], deadSkills: [], atRiskSkills: [],
-      })
     }
   })
 
