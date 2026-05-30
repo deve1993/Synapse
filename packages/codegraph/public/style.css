@@ -2094,3 +2094,143 @@ dialog details pre {
   padding: 12px 0;
   text-align: center;
 }
+
+/* ── Command Palette (⌘K) ── */
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .65);
+  z-index: 9000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 15vh;
+}
+
+.cmdk-panel {
+  background: var(--card);
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  width: min(560px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .7), 0 0 0 1px rgba(167, 139, 250, .08);
+}
+
+.cmdk-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font);
+  outline: none;
+  flex-shrink: 0;
+}
+
+.cmdk-input::placeholder {
+  color: var(--text-muted);
+}
+
+.cmdk-listbox {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+
+/* Thin scrollbar inside the listbox */
+.cmdk-listbox::-webkit-scrollbar { width: 4px; }
+.cmdk-listbox::-webkit-scrollbar-track { background: transparent; }
+.cmdk-listbox::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+
+.cmdk-group-header {
+  padding: 8px 14px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+
+.cmdk-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background .08s;
+  user-select: none;
+}
+
+.cmdk-row:hover,
+.cmdk-row--active {
+  background: rgba(99, 102, 241, .10);
+}
+
+.cmdk-row-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.cmdk-badge-memory {
+  background: rgba(52, 211, 153, .12);
+  color: var(--green);
+  border: 1px solid rgba(52, 211, 153, .2);
+}
+
+.cmdk-badge-skill {
+  background: rgba(167, 139, 250, .12);
+  color: var(--accent);
+  border: 1px solid rgba(167, 139, 250, .2);
+}
+
+.cmdk-badge-nav {
+  background: rgba(96, 165, 250, .10);
+  color: var(--blue);
+  border: 1px solid rgba(96, 165, 250, .18);
+}
+
+.cmdk-row-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.cmdk-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.cmdk-row-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.cmdk-empty {
+  padding: 20px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ── End Command Palette ── */
