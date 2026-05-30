@@ -64,30 +64,47 @@ function greetingLine(name) {
 const KEY_CLICK = `onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}"`
 
 let _hubRefreshTimer = null
+let _hubVisibilityHandler = null
 
 function clearHubRefresh() {
   if (_hubRefreshTimer) { clearInterval(_hubRefreshTimer); _hubRefreshTimer = null }
+  if (_hubVisibilityHandler) { document.removeEventListener('visibilitychange', _hubVisibilityHandler); _hubVisibilityHandler = null }
 }
 
 async function refreshHubLive() {
   const hash = location.hash || '#/'
   if (hash !== '#/' && hash !== '#' && hash !== '#/home') { clearHubRefresh(); return }
+  if (document.visibilityState === 'hidden') return
   try {
-    const [health, review] = await Promise.all([
-      SAFE(api.get('/api/health')),
-      SAFE(api.get('/api/review/pending')),
-    ])
+    const health = await SAFE(api.get('/api/health'))
     const memVal = document.querySelector('.hub-kpi-purple .hub-kpi-val')
     if (memVal) memVal.textContent = health.memories || 0
     const sessVal = document.querySelector('.hub-kpi-pink .hub-kpi-val')
     if (sessVal) sessVal.textContent = health.activeSessions || 0
-    const reviewTotal = (review.memories?.length || 0) + (review.skills?.length || 0) +
-      (review.components?.length || 0) + (review.proposals?.length || 0) + (review.dsScans?.length || 0)
+    const reviewTotal = health.pendingReviews ?? 0
     const reviewRow = document.querySelector('[data-health="review"]')
     if (reviewRow) {
       reviewRow.querySelector('.health-row-val').textContent = reviewTotal
       const dot = reviewRow.querySelector('.health-dot')
       dot.className = 'health-dot ' + (reviewTotal === 0 ? 'health-dot-ok' : reviewTotal <= 5 ? 'health-dot-warn' : 'health-dot-crit')
+    }
+    if (typeof health.decayCount === 'number') {
+      const decayRow = document.querySelector('[data-health="decay"]')
+      if (decayRow) {
+        const decayCount = health.decayCount
+        decayRow.querySelector('.health-row-val').textContent = decayCount
+        const dot = decayRow.querySelector('.health-dot')
+        dot.className = 'health-dot ' + (decayCount === 0 ? 'health-dot-ok' : decayCount <= 5 ? 'health-dot-warn' : 'health-dot-crit')
+      }
+    }
+    if (typeof health.staleCount === 'number') {
+      const staleRow = document.querySelector('[data-health="stale"]')
+      if (staleRow) {
+        const staleCount = health.staleCount
+        staleRow.querySelector('.health-row-val').textContent = staleCount
+        const dot = staleRow.querySelector('.health-dot')
+        dot.className = 'health-dot ' + (staleCount === 0 ? 'health-dot-ok' : staleCount <= 5 ? 'health-dot-warn' : 'health-dot-crit')
+      }
     }
     const uptimeStrong = document.querySelector('.health-footer span:first-child strong')
     if (uptimeStrong) uptimeStrong.textContent = formatUptime(health.uptime || 0)
@@ -161,6 +178,8 @@ const HUB_ICONS = {
   skill: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
 }
 
 // ── Home ──
@@ -171,17 +190,16 @@ export async function renderHome() {
   const pageEl = document.getElementById('page')
   pageEl.innerHTML = hubSkeleton()
 
-  const [health, data, me, memR, sessR, review, skillsR] = await Promise.all([
+  const [health, data, me, memR, sessR, skillsR] = await Promise.all([
     SAFE(api.get('/api/health')),
     SAFE(api.get('/api/data')),
     SAFE(api.get('/api/me')),
     SAFE(api.get('/api/memories?limit=100')),
     SAFE(api.get('/api/sessions?limit=20')),
-    SAFE(api.get('/api/review/pending')),
     SAFE(api.get('/api/skills?limit=1')),
   ])
 
-  const userName = (me.user?.name?.split(' ')[0]) || 'Daniel'
+  const userName = (me.user?.name?.split(' ')[0]) || 'there'
   const memories = memR.memories || []
   const sessions = sessR.sessions || []
   const skillsTotal = skillsR.total || 0
@@ -259,13 +277,14 @@ export async function renderHome() {
   `).join('') || '<p style="color:var(--text-muted);font-size:12px">No memories yet.</p>'
 
   // ── System Health ──
-  const decayCount = memories.filter(m => (m.confidence ?? 10) < 4).length
-  const staleCount = memories.filter(m => {
+  const decayCount = health.decayCount ?? memories.filter(m => (m.confidence ?? 10) < 4).length
+  const staleCount = health.staleCount ?? memories.filter(m => {
     const ts = m.updatedAt || m.updated_at || m.createdAt || m.created_at
     return ts && daysSince(ts) > 90
   }).length
-  const reviewTotal = (review.memories?.length || 0) + (review.skills?.length || 0) +
-    (review.components?.length || 0) + (review.proposals?.length || 0) + (review.dsScans?.length || 0)
+  // No local fallback like decay/stale: /api/review/pending was dropped this phase.
+  // /api/health always returns pendingReviews (0 even on DB error), so ?? 0 is just a SAFE-{} guard.
+  const reviewTotal = health.pendingReviews ?? 0
 
   const dotClass = (n) => n === 0 ? 'health-dot-ok' : n <= 5 ? 'health-dot-warn' : 'health-dot-crit'
 
@@ -278,12 +297,57 @@ export async function renderHome() {
     ? `openProjectDetail('${escHtml(resumeProject)}')`
     : recentSession ? `location.hash='#/sessions'` : ''
 
+  // ── Attention band ──
+  const attnItems = []
+  if (reviewTotal > 0) attnItems.push({
+    count: reviewTotal,
+    label: reviewTotal === 1 ? 'Pending review' : 'Pending reviews',
+    hint: 'Approve or reject queued items',
+    target: '#/review',
+  })
+  if (decayCount > 0) attnItems.push({
+    count: decayCount,
+    label: decayCount === 1 ? 'Decaying memory' : 'Decaying memories',
+    hint: 'Confidence below 4',
+    target: '#/memories',
+  })
+  if (staleCount > 0) attnItems.push({
+    count: staleCount,
+    label: staleCount === 1 ? 'Stale memory' : 'Stale memories',
+    hint: 'Not updated in 90+ days',
+    target: '#/memories',
+  })
+
+  const attnBand = attnItems.length === 0 ? '' : `
+    <div class="hub-attention">
+      <div class="hub-attention-head">
+        <span class="hub-attention-icon">${HUB_ICONS.warn}</span>
+        Needs attention
+      </div>
+      ${attnItems.map(item => {
+        const sev = item.count <= 5 ? 'attn-warn' : 'attn-crit'
+        return `<div class="hub-attention-item ${sev}" tabindex="0" role="button"
+          aria-label="${item.label}: ${item.count}"
+          onclick="location.hash='${item.target}'" ${KEY_CLICK}>
+          <span class="attn-count">${item.count}</span>
+          <div class="attn-body">
+            <span class="attn-label">${item.label}</span>
+            <span class="attn-hint">${item.hint}</span>
+          </div>
+          <span class="attn-arrow">${HUB_ICONS.arrow}</span>
+        </div>`
+      }).join('')}
+    </div>
+  `
+
   pageEl.innerHTML = `
     <section class="hub-hero">
       <div class="hub-greeting-line">${escHtml(greetingLine(userName))}</div>
 
+      ${attnBand}
+
       <div class="hub-actions">
-        <button class="hub-chip hub-chip-primary" onclick="openNewProjectModal()">
+        <button class="hub-chip" onclick="openNewProjectModal()">
           <span class="hub-chip-icon">${HUB_ICONS.plus}</span>New project
         </button>
         <button class="hub-chip${resumeDisabled ? ' hub-chip-disabled' : ''}"
@@ -327,7 +391,7 @@ export async function renderHome() {
     <section class="hub-grid">
       <div class="hub-col-main">
         <div class="card hub-activity">
-          <div class="card-title">Recent activity <span class="count">${top.length}</span></div>
+          <div class="card-title">Recent memories &amp; sessions <span class="count">${top.length}</span></div>
           ${activityHtml}
         </div>
       </div>
@@ -338,7 +402,7 @@ export async function renderHome() {
         </div>
         <div class="card hub-health">
           <div class="card-title">System health</div>
-          <div class="health-row" tabindex="0" role="button" aria-label="Decay alerts: ${decayCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
+          <div class="health-row" data-health="decay" tabindex="0" role="button" aria-label="Decay alerts: ${decayCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
             <span class="health-dot ${dotClass(decayCount)}"></span>
             <span class="health-row-label">Decay alerts <span class="health-row-hint">(conf &lt; 4)</span></span>
             <span class="health-row-val">${decayCount}</span>
@@ -348,7 +412,7 @@ export async function renderHome() {
             <span class="health-row-label">Pending reviews</span>
             <span class="health-row-val">${reviewTotal}</span>
           </div>
-          <div class="health-row" tabindex="0" role="button" aria-label="Stale memories: ${staleCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
+          <div class="health-row" data-health="stale" tabindex="0" role="button" aria-label="Stale memories: ${staleCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
             <span class="health-dot ${dotClass(staleCount)}"></span>
             <span class="health-row-label">Stale memories <span class="health-row-hint">(&gt;90d)</span></span>
             <span class="health-row-val">${staleCount}</span>
@@ -367,6 +431,17 @@ export async function renderHome() {
 
   // Live refresh every 30s — auto-clears when user navigates away
   _hubRefreshTimer = setInterval(refreshHubLive, 30000)
+
+  // Pause polling while tab is hidden; trigger an immediate refresh on tab return
+  // Guard against double-registration across re-renders
+  if (_hubVisibilityHandler) { document.removeEventListener('visibilitychange', _hubVisibilityHandler) }
+  _hubVisibilityHandler = () => {
+    if (document.visibilityState === 'visible') {
+      const hash = location.hash || '#/'
+      if (hash === '#/' || hash === '#' || hash === '#/home') refreshHubLive()
+    }
+  }
+  document.addEventListener('visibilitychange', _hubVisibilityHandler)
 }
 
 // ── Skills ──

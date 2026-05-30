@@ -3,6 +3,7 @@
 // All modal logic is in js/modal.js. All fetch logic is in js/api.js.
 
 import { api } from './js/api.js'
+import { openCommandPalette, toggleCommandPalette } from './js/command-palette.js'
 import {
   openEditProjectModal, closeEditModal, saveProject, switchEditTab,
   editField, editSelect, memberRow,
@@ -90,6 +91,15 @@ $('#global-search')?.addEventListener('input', (e) => {
     else searchGlobal(q)
   }, 300)
 })
+
+// ── Command Palette (⌘K / Ctrl+K) ──
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    toggleCommandPalette()  // open if closed, close if open (spec: toggle)
+  }
+})
+window.openCommandPalette = openCommandPalette
 
 // ── Detail Panel ──
 $('#detail-close')?.addEventListener('click', closeDetail)

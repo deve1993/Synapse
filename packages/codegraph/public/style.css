@@ -522,18 +522,6 @@ main {
 
 .hub-chip-icon svg { width: 14px; height: 14px; }
 
-.hub-chip-primary {
-  background: linear-gradient(135deg, var(--accent2), var(--accent));
-  border-color: transparent;
-  color: #fff;
-}
-
-.hub-chip-primary:hover {
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 2px 14px rgba(167,139,250,.3);
-}
-
 .hub-chip-disabled {
   opacity: .4;
   pointer-events: none;
@@ -608,6 +596,107 @@ main {
 .hub-kpi-pink .hub-kpi-icon { background: rgba(236,72,153,.12); color: var(--pink); }
 .hub-kpi-pink .hub-kpi-val { color: var(--pink); }
 .hub-kpi-pink:hover { border-color: rgba(236,72,153,.4); box-shadow: 0 4px 16px rgba(236,72,153,.12); }
+
+/* Attention band */
+.hub-attention {
+  margin-bottom: 16px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--yellow) 5%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--yellow) 18%, var(--border));
+  overflow: hidden;
+}
+
+.hub-attention-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--yellow);
+  border-bottom: 1px solid color-mix(in srgb, var(--yellow) 12%, var(--border));
+}
+
+.hub-attention-icon {
+  display: inline-flex;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.hub-attention-icon svg { width: 13px; height: 13px; }
+
+.hub-attention-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: background .12s;
+  border-bottom: 1px solid var(--border);
+}
+
+.hub-attention-item:last-child { border-bottom: none; }
+
+.hub-attention-item:hover { background: rgba(255,255,255,.025); }
+
+.attn-count {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.attn-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.attn-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attn-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.attn-arrow {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color .12s, transform .12s;
+}
+
+.attn-arrow svg { width: 14px; height: 14px; }
+
+.hub-attention-item:hover .attn-arrow {
+  color: var(--text-dim);
+  transform: translateX(2px);
+}
+
+/* Severity accent — warn (≤5) */
+.attn-warn .attn-count { color: var(--yellow); }
+.attn-warn { border-left: 3px solid var(--yellow); }
+
+/* Severity accent — crit (>5) */
+.attn-crit .attn-count { color: var(--red); }
+.attn-crit { border-left: 3px solid var(--red); }
 
 /* Grid: activity (2/3) + side (1/3) */
 .hub-grid {
@@ -828,7 +917,8 @@ main {
 /* Focus styles for keyboard a11y */
 .activity-row:focus-visible,
 .snapshot-row:focus-visible,
-.health-row:focus-visible {
+.health-row:focus-visible,
+.hub-attention-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
@@ -2094,3 +2184,143 @@ dialog details pre {
   padding: 12px 0;
   text-align: center;
 }
+
+/* ── Command Palette (⌘K) ── */
+
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .65);
+  z-index: 9000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 15vh;
+}
+
+.cmdk-panel {
+  background: var(--card);
+  border: 1px solid var(--border-hover);
+  border-radius: 12px;
+  width: min(560px, 92vw);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .7), 0 0 0 1px rgba(167, 139, 250, .08);
+}
+
+.cmdk-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font);
+  outline: none;
+  flex-shrink: 0;
+}
+
+.cmdk-input::placeholder {
+  color: var(--text-muted);
+}
+
+.cmdk-listbox {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+
+/* Thin scrollbar inside the listbox */
+.cmdk-listbox::-webkit-scrollbar { width: 4px; }
+.cmdk-listbox::-webkit-scrollbar-track { background: transparent; }
+.cmdk-listbox::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+
+.cmdk-group-header {
+  padding: 8px 14px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+}
+
+.cmdk-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background .08s;
+  user-select: none;
+}
+
+.cmdk-row:hover,
+.cmdk-row--active {
+  background: color-mix(in srgb, var(--accent2) 10%, transparent);
+}
+
+.cmdk-row-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+
+.cmdk-badge-memory {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 20%, transparent);
+}
+
+.cmdk-badge-skill {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.cmdk-badge-nav {
+  background: color-mix(in srgb, var(--blue) 10%, transparent);
+  color: var(--blue);
+  border: 1px solid color-mix(in srgb, var(--blue) 18%, transparent);
+}
+
+.cmdk-row-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+}
+
+.cmdk-row-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.cmdk-row-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.cmdk-empty {
+  padding: 20px 16px;
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+/* ── End Command Palette ── */
