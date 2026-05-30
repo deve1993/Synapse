@@ -1,8 +1,12 @@
 // Synapse — ⌘K Command Palette module
 // Self-contained: overlay, search, keyboard nav, a11y, focus management.
-// Exports: openCommandPalette(), closeCommandPalette()
+// Exports: openCommandPalette(), closeCommandPalette(), toggleCommandPalette()
 
 import { api } from './api.js'
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+const SEARCH_DEBOUNCE_MS = 180
 
 // ── Local helpers ────────────────────────────────────────────────────────────
 
@@ -36,6 +40,10 @@ let _items = []             // flat list of selectable row objects { el, activat
 let _activeIdx = -1         // currently highlighted row index
 let _paletteKeydown = null  // in-palette keydown handler reference (for cleanup)
 let _rowIdCounter = 0       // monotonic counter for unique row ids (aria-activedescendant)
+
+// Close the palette on any route change so a background nav doesn't leave it
+// stuck open over the new page. Registered once at module load.
+window.addEventListener('hashchange', () => { if (_overlay) closeCommandPalette() })
 
 // ── Open / Close ─────────────────────────────────────────────────────────────
 
@@ -125,6 +133,13 @@ export function openCommandPalette() {
       }
       return
     }
+    if (e.key === 'Tab') {
+      // Focus trap: the panel's only focusable element is the input, so keep
+      // focus there (aria-modal=true promises containment).
+      e.preventDefault()
+      _overlay?.querySelector('.cmdk-input')?.focus()
+      return
+    }
   }
   document.addEventListener('keydown', _paletteKeydown)
 
@@ -133,7 +148,7 @@ export function openCommandPalette() {
     clearTimeout(_debounceTimer)
     _debounceTimer = setTimeout(() => {
       _runSearch(input.value.trim())
-    }, 180)
+    }, SEARCH_DEBOUNCE_MS)
   })
 }
 
@@ -148,6 +163,7 @@ export function closeCommandPalette() {
   }
   _items = []
   _activeIdx = -1
+  _searchSeq = 0  // hygiene: reset stale-response guard between sessions
   // Restore focus
   if (_previousFocus && typeof _previousFocus.focus === 'function') {
     _previousFocus.focus()
@@ -177,24 +193,19 @@ async function _runSearch(q) {
   // Race-condition guard
   const seq = ++_searchSeq
 
-  try {
-    const [skillsData, memoriesData] = await Promise.all([
-      api.get('/api/skills?search=' + encodeURIComponent(q) + '&limit=6'),
-      api.get('/api/memories?search=' + encodeURIComponent(q) + '&limit=6'),
-    ])
+  // allSettled so a single failing endpoint still renders the other's results.
+  const [skillsRes, memoriesRes] = await Promise.allSettled([
+    api.get('/api/skills?search=' + encodeURIComponent(q) + '&limit=6'),
+    api.get('/api/memories?search=' + encodeURIComponent(q) + '&limit=6'),
+  ])
 
-    // Stale response — a newer query is in-flight; discard
-    if (seq !== _searchSeq) return
+  // Stale response — a newer query is in-flight; discard
+  if (seq !== _searchSeq) return
 
-    const skills = skillsData?.skills || []
-    const memories = memoriesData?.memories || []
+  const skills = skillsRes.status === 'fulfilled' ? (skillsRes.value?.skills || []) : []
+  const memories = memoriesRes.status === 'fulfilled' ? (memoriesRes.value?.memories || []) : []
 
-    _renderResults(q, memories, skills, navMatches)
-  } catch {
-    // Stale or error — only show nav matches we already have
-    if (seq !== _searchSeq) return
-    _renderResults(q, [], [], navMatches)
-  }
+  _renderResults(q, memories, skills, navMatches)
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
@@ -276,7 +287,7 @@ function _renderResults(q, memories, skills, navMatches) {
     for (const nav of navMatches) {
       const row = _makeRow(
         `<span class="cmdk-row-badge cmdk-badge-nav">nav</span>
-         <span class="cmdk-row-icon">${nav.icon}</span>
+         <span class="cmdk-row-icon">${escHtml(nav.icon)}</span>
          <span class="cmdk-row-text">${escHtml(nav.label)}</span>`,
         () => {
           closeCommandPalette()
