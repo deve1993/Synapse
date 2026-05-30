@@ -522,18 +522,6 @@ main {
 
 .hub-chip-icon svg { width: 14px; height: 14px; }
 
-.hub-chip-primary {
-  background: linear-gradient(135deg, var(--accent2), var(--accent));
-  border-color: transparent;
-  color: #fff;
-}
-
-.hub-chip-primary:hover {
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 2px 14px rgba(167,139,250,.3);
-}
-
 .hub-chip-disabled {
   opacity: .4;
   pointer-events: none;
@@ -652,7 +640,7 @@ main {
 
 .hub-attention-item:last-child { border-bottom: none; }
 
-.hub-attention-item:hover { background: rgba(255,255,255,.03); }
+.hub-attention-item:hover { background: rgba(255,255,255,.025); }
 
 .attn-count {
   font-size: 20px;
@@ -929,7 +917,8 @@ main {
 /* Focus styles for keyboard a11y */
 .activity-row:focus-visible,
 .snapshot-row:focus-visible,
-.health-row:focus-visible {
+.health-row:focus-visible,
+.hub-attention-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
