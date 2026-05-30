@@ -152,6 +152,54 @@ function getMemoryGraphStats() {
   }
 }
 
+// ── Attention counts (server-side, used by /api/health) ──
+
+export function computeAttentionCounts(db: import('better-sqlite3').Database): {
+  decayCount: number
+  staleCount: number
+  pendingReviews: number
+} {
+  const staleCutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
+
+  const decayCount = (db.prepare(
+    `SELECT COUNT(*) AS n FROM memories WHERE status = 'active' AND confidence IS NOT NULL AND confidence < 4`
+  ).get() as { n: number }).n
+
+  const staleCount = (db.prepare(
+    `SELECT COUNT(*) AS n FROM memories WHERE status = 'active' AND COALESCE(updated_at, created_at) < ?`
+  ).get(staleCutoff) as { n: number }).n
+
+  const memoriesPending = (db.prepare(
+    `SELECT COUNT(*) AS n FROM memories WHERE status = 'pending-review'`
+  ).get() as { n: number }).n
+
+  const skillsPending = (db.prepare(
+    `SELECT COUNT(*) AS n FROM skills WHERE status = 'pending'`
+  ).get() as { n: number }).n
+
+  const componentsPending = (db.prepare(
+    `SELECT COUNT(*) AS n FROM ui_components WHERE status = 'pending'`
+  ).get() as { n: number }).n
+
+  let proposalsPending = 0
+  try {
+    proposalsPending = (db.prepare(
+      `SELECT COUNT(*) AS n FROM skill_proposals WHERE status = 'pending'`
+    ).get() as { n: number }).n
+  } catch { /* table not yet migrated */ }
+
+  let dsScansPending = 0
+  try {
+    dsScansPending = (db.prepare(
+      `SELECT COUNT(*) AS n FROM design_system_scans WHERE status = 'pending'`
+    ).get() as { n: number }).n
+  } catch { /* table not yet migrated */ }
+
+  const pendingReviews = memoriesPending + skillsPending + componentsPending + proposalsPending + dsScansPending
+
+  return { decayCount, staleCount, pendingReviews }
+}
+
 // ── HTTP Server ──
 
 export async function startHttpServer(port: number, authToken?: string): Promise<void> {
@@ -493,6 +541,12 @@ export async function startHttpServer(port: number, authToken?: string): Promise
   app.get('/api/health', (_req, res) => {
     const mg = getMemoryGraphStats()
     const repos = loadRegistrySafe()
+    let attentionCounts = { decayCount: 0, staleCount: 0, pendingReviews: 0 }
+    try {
+      const db = openDb(SKILLBRAIN_ROOT)
+      attentionCounts = computeAttentionCounts(db)
+      closeDb(db)
+    } catch { /* ignore — non-critical */ }
     res.json({
       status: 'ok',
       memories: mg.total,
@@ -501,6 +555,7 @@ export async function startHttpServer(port: number, authToken?: string): Promise
       activeSessions: transports.size,
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
+      ...attentionCounts,
     })
   })
 

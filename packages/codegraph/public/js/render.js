@@ -73,16 +73,12 @@ async function refreshHubLive() {
   const hash = location.hash || '#/'
   if (hash !== '#/' && hash !== '#' && hash !== '#/home') { clearHubRefresh(); return }
   try {
-    const [health, review] = await Promise.all([
-      SAFE(api.get('/api/health')),
-      SAFE(api.get('/api/review/pending')),
-    ])
+    const health = await SAFE(api.get('/api/health'))
     const memVal = document.querySelector('.hub-kpi-purple .hub-kpi-val')
     if (memVal) memVal.textContent = health.memories || 0
     const sessVal = document.querySelector('.hub-kpi-pink .hub-kpi-val')
     if (sessVal) sessVal.textContent = health.activeSessions || 0
-    const reviewTotal = (review.memories?.length || 0) + (review.skills?.length || 0) +
-      (review.components?.length || 0) + (review.proposals?.length || 0) + (review.dsScans?.length || 0)
+    const reviewTotal = health.pendingReviews ?? 0
     const reviewRow = document.querySelector('[data-health="review"]')
     if (reviewRow) {
       reviewRow.querySelector('.health-row-val').textContent = reviewTotal
@@ -259,13 +255,13 @@ export async function renderHome() {
   `).join('') || '<p style="color:var(--text-muted);font-size:12px">No memories yet.</p>'
 
   // ── System Health ──
-  const decayCount = memories.filter(m => (m.confidence ?? 10) < 4).length
-  const staleCount = memories.filter(m => {
+  const decayCount = health.decayCount ?? memories.filter(m => (m.confidence ?? 10) < 4).length
+  const staleCount = health.staleCount ?? memories.filter(m => {
     const ts = m.updatedAt || m.updated_at || m.createdAt || m.created_at
     return ts && daysSince(ts) > 90
   }).length
-  const reviewTotal = (review.memories?.length || 0) + (review.skills?.length || 0) +
-    (review.components?.length || 0) + (review.proposals?.length || 0) + (review.dsScans?.length || 0)
+  const reviewTotal = health.pendingReviews ?? ((review.memories?.length || 0) + (review.skills?.length || 0) +
+    (review.components?.length || 0) + (review.proposals?.length || 0) + (review.dsScans?.length || 0))
 
   const dotClass = (n) => n === 0 ? 'health-dot-ok' : n <= 5 ? 'health-dot-warn' : 'health-dot-crit'
 
