@@ -88,6 +88,24 @@ async function refreshHubLive() {
       const dot = reviewRow.querySelector('.health-dot')
       dot.className = 'health-dot ' + (reviewTotal === 0 ? 'health-dot-ok' : reviewTotal <= 5 ? 'health-dot-warn' : 'health-dot-crit')
     }
+    if (typeof health.decayCount === 'number') {
+      const decayRow = document.querySelector('[data-health="decay"]')
+      if (decayRow) {
+        const decayCount = health.decayCount
+        decayRow.querySelector('.health-row-val').textContent = decayCount
+        const dot = decayRow.querySelector('.health-dot')
+        dot.className = 'health-dot ' + (decayCount === 0 ? 'health-dot-ok' : decayCount <= 5 ? 'health-dot-warn' : 'health-dot-crit')
+      }
+    }
+    if (typeof health.staleCount === 'number') {
+      const staleRow = document.querySelector('[data-health="stale"]')
+      if (staleRow) {
+        const staleCount = health.staleCount
+        staleRow.querySelector('.health-row-val').textContent = staleCount
+        const dot = staleRow.querySelector('.health-dot')
+        dot.className = 'health-dot ' + (staleCount === 0 ? 'health-dot-ok' : staleCount <= 5 ? 'health-dot-warn' : 'health-dot-crit')
+      }
+    }
     const uptimeStrong = document.querySelector('.health-footer span:first-child strong')
     if (uptimeStrong) uptimeStrong.textContent = formatUptime(health.uptime || 0)
     const statusEl = document.getElementById('server-status')
@@ -384,7 +402,7 @@ export async function renderHome() {
         </div>
         <div class="card hub-health">
           <div class="card-title">System health</div>
-          <div class="health-row" tabindex="0" role="button" aria-label="Decay alerts: ${decayCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
+          <div class="health-row" data-health="decay" tabindex="0" role="button" aria-label="Decay alerts: ${decayCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
             <span class="health-dot ${dotClass(decayCount)}"></span>
             <span class="health-row-label">Decay alerts <span class="health-row-hint">(conf &lt; 4)</span></span>
             <span class="health-row-val">${decayCount}</span>
@@ -394,7 +412,7 @@ export async function renderHome() {
             <span class="health-row-label">Pending reviews</span>
             <span class="health-row-val">${reviewTotal}</span>
           </div>
-          <div class="health-row" tabindex="0" role="button" aria-label="Stale memories: ${staleCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
+          <div class="health-row" data-health="stale" tabindex="0" role="button" aria-label="Stale memories: ${staleCount}" onclick="location.hash='#/memories'" ${KEY_CLICK}>
             <span class="health-dot ${dotClass(staleCount)}"></span>
             <span class="health-row-label">Stale memories <span class="health-row-hint">(&gt;90d)</span></span>
             <span class="health-row-val">${staleCount}</span>
